@@ -22,26 +22,243 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/jaypipes/ghw"
+	"k8s.io/apimachinery/pkg/util/intstr"
+	podresourcesapi "k8s.io/kubelet/pkg/apis/podresources/v1"
+	v1 "k8s.io/kubelet/pkg/apis/podresources/v1"
 
 	cmp "github.com/google/go-cmp/cmp"
+	"github.com/jaypipes/ghw"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
-	"k8s.io/apimachinery/pkg/util/intstr"
+	"github.com/stretchr/testify/mock"
 
 	topologyv1alpha1 "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha1"
-	v1 "k8s.io/kubelet/pkg/apis/podresources/v1"
+	"github.com/k8stopologyawareschedwg/resource-topology-exporter/pkg/podres"
 )
 
-func TestResourcesAggregator(t *testing.T) {
-
+func TestMakeCoreIDToNodeIDMap(t *testing.T) {
 	fakeTopo := ghw.TopologyInfo{}
 	Convey("When recovering test topology from JSON data", t, func() {
 		err := json.Unmarshal([]byte(testTopology), &fakeTopo)
 		So(err, ShouldBeNil)
 	})
 
-	var resAggr ResourcesAggregator
+	Convey("When mapping cores to nodes", t, func() {
+		res := MakeCoreIDToNodeIDMap(&fakeTopo)
+		expected := getExpectedCoreToNodeMap()
+		log.Printf("result=%v", res)
+		log.Printf("expected=%v", expected)
+		log.Printf("diff=%s", cmp.Diff(res, expected))
+		So(cmp.Equal(res, expected), ShouldBeTrue)
+	})
+
+}
+
+func TestNormalizeContainerDevices(t *testing.T) {
+	availRes := &v1.AllocatableResourcesResponse{
+		Devices: []*v1.ContainerDevices{
+			&v1.ContainerDevices{
+				ResourceName: "fake.io/net",
+				DeviceIds:    []string{"netAAA-0"},
+				Topology: &v1.TopologyInfo{
+					Nodes: []*v1.NUMANode{
+						&v1.NUMANode{
+							ID: 0,
+						},
+					},
+				},
+			},
+			&v1.ContainerDevices{
+				ResourceName: "fake.io/net",
+				DeviceIds:    []string{"netAAA-1"},
+				Topology: &v1.TopologyInfo{
+					Nodes: []*v1.NUMANode{
+						&v1.NUMANode{
+							ID: 0,
+						},
+					},
+				},
+			},
+			&v1.ContainerDevices{
+				ResourceName: "fake.io/net",
+				DeviceIds:    []string{"netAAA-2"},
+				Topology: &v1.TopologyInfo{
+					Nodes: []*v1.NUMANode{
+						&v1.NUMANode{
+							ID: 0,
+						},
+					},
+				},
+			},
+			&v1.ContainerDevices{
+				ResourceName: "fake.io/net",
+				DeviceIds:    []string{"netAAA-3"},
+				Topology: &v1.TopologyInfo{
+					Nodes: []*v1.NUMANode{
+						&v1.NUMANode{
+							ID: 0,
+						},
+					},
+				},
+			},
+			&v1.ContainerDevices{
+				ResourceName: "fake.io/net",
+				DeviceIds:    []string{"netBBB-0"},
+				Topology: &v1.TopologyInfo{
+					Nodes: []*v1.NUMANode{
+						&v1.NUMANode{
+							ID: 1,
+						},
+					},
+				},
+			},
+			&v1.ContainerDevices{
+				ResourceName: "fake.io/net",
+				DeviceIds:    []string{"netBBB-1"},
+				Topology: &v1.TopologyInfo{
+					Nodes: []*v1.NUMANode{
+						&v1.NUMANode{
+							ID: 1,
+						},
+					},
+				},
+			},
+			&v1.ContainerDevices{
+				ResourceName: "fake.io/gpu",
+				DeviceIds:    []string{"gpuAAA"},
+				Topology: &v1.TopologyInfo{
+					Nodes: []*v1.NUMANode{
+						&v1.NUMANode{
+							ID: 1,
+						},
+					},
+				},
+			},
+		},
+		CpuIds: []int64{
+			0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+			12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+		},
+	}
+
+	coreIDToNodeIDMap := getExpectedCoreToNodeMap()
+
+	Convey("When normalizing the container devices from pod resources", t, func() {
+		res := NormalizeContainerDevices(availRes.GetDevices(), availRes.GetCpuIds(), coreIDToNodeIDMap)
+		expected := []*podresourcesapi.ContainerDevices{
+			&podresourcesapi.ContainerDevices{
+				ResourceName: "fake.io/net",
+				DeviceIds:    []string{"netAAA-0"},
+				Topology: &podresourcesapi.TopologyInfo{
+					Nodes: []*podresourcesapi.NUMANode{
+						&podresourcesapi.NUMANode{
+							ID: 0,
+						},
+					},
+				},
+			},
+			&podresourcesapi.ContainerDevices{
+				ResourceName: "fake.io/net",
+				DeviceIds:    []string{"netAAA-1"},
+				Topology: &podresourcesapi.TopologyInfo{
+					Nodes: []*podresourcesapi.NUMANode{
+						&podresourcesapi.NUMANode{
+							ID: 0,
+						},
+					},
+				},
+			},
+			&podresourcesapi.ContainerDevices{
+				ResourceName: "fake.io/net",
+				DeviceIds:    []string{"netAAA-2"},
+				Topology: &podresourcesapi.TopologyInfo{
+					Nodes: []*podresourcesapi.NUMANode{
+						&podresourcesapi.NUMANode{
+							ID: 0,
+						},
+					},
+				},
+			},
+			&podresourcesapi.ContainerDevices{
+				ResourceName: "fake.io/net",
+				DeviceIds:    []string{"netAAA-3"},
+				Topology: &podresourcesapi.TopologyInfo{
+					Nodes: []*podresourcesapi.NUMANode{
+						&podresourcesapi.NUMANode{
+							ID: 0,
+						},
+					},
+				},
+			},
+			&podresourcesapi.ContainerDevices{
+				ResourceName: "fake.io/net",
+				DeviceIds:    []string{"netBBB-0"},
+				Topology: &podresourcesapi.TopologyInfo{
+					Nodes: []*podresourcesapi.NUMANode{
+						&podresourcesapi.NUMANode{
+							ID: 1,
+						},
+					},
+				},
+			},
+			&podresourcesapi.ContainerDevices{
+				ResourceName: "fake.io/net",
+				DeviceIds:    []string{"netBBB-1"},
+				Topology: &podresourcesapi.TopologyInfo{
+					Nodes: []*podresourcesapi.NUMANode{
+						&podresourcesapi.NUMANode{
+							ID: 1,
+						},
+					},
+				},
+			},
+			&podresourcesapi.ContainerDevices{
+				ResourceName: "fake.io/gpu",
+				DeviceIds:    []string{"gpuAAA"},
+				Topology: &podresourcesapi.TopologyInfo{
+					Nodes: []*podresourcesapi.NUMANode{
+						&podresourcesapi.NUMANode{
+							ID: 1,
+						},
+					},
+				},
+			},
+			&podresourcesapi.ContainerDevices{
+				ResourceName: "cpu",
+				DeviceIds:    []string{"0", "2", "4", "6", "8", "10", "12", "14", "16", "18", "20", "22"},
+				Topology: &podresourcesapi.TopologyInfo{
+					Nodes: []*podresourcesapi.NUMANode{
+						&podresourcesapi.NUMANode{
+							ID: 0,
+						},
+					},
+				},
+			},
+			&podresourcesapi.ContainerDevices{
+				ResourceName: "cpu",
+				DeviceIds:    []string{"1", "3", "5", "7", "9", "11", "13", "15", "17", "19", "21", "23"},
+				Topology: &podresourcesapi.TopologyInfo{
+					Nodes: []*podresourcesapi.NUMANode{
+						&podresourcesapi.NUMANode{
+							ID: 1,
+						},
+					},
+				},
+			},
+		}
+		log.Printf("result=%v", res)
+		log.Printf("expected=%v", expected)
+		log.Printf("diff=%s", cmp.Diff(res, expected))
+		So(cmp.Equal(res, expected), ShouldBeTrue)
+	})
+}
+
+func TestResourcesScan(t *testing.T) {
+	fakeTopo := ghw.TopologyInfo{}
+	Convey("When recovering test topology from JSON data", t, func() {
+		err := json.Unmarshal([]byte(testTopology), &fakeTopo)
+		So(err, ShouldBeNil)
+	})
 
 	Convey("When I aggregate the node resources fake data and no pod allocation", t, func() {
 		availRes := &v1.AllocatableResourcesResponse{
@@ -130,7 +347,10 @@ func TestResourcesAggregator(t *testing.T) {
 			},
 		}
 
-		resAggr = NewResourcesAggregatorFromData(&fakeTopo, availRes)
+		mockPodResClient := new(podres.MockPodResourcesListerClient)
+		mockPodResClient.On("GetAllocatableResources", mock.AnythingOfType("*context.timerCtx"), mock.AnythingOfType("*v1.AllocatableResourcesRequest")).Return(availRes, nil)
+		resMon, err := NewResourceMonitorWithTopology("TEST", &fakeTopo, mockPodResClient, Args{})
+		So(err, ShouldBeNil)
 
 		Convey("When aggregating resources", func() {
 			expected := topologyv1alpha1.ZoneList{
@@ -186,14 +406,20 @@ func TestResourcesAggregator(t *testing.T) {
 						},
 						topologyv1alpha1.ResourceInfo{
 							Name:        "fake.io/net",
-							Allocatable: intstr.FromString("4"),
-							Capacity:    intstr.FromString("4"),
+							Allocatable: intstr.FromString("2"),
+							Capacity:    intstr.FromString("2"),
 						},
 					},
 				},
 			}
 
-			res := resAggr.Aggregate(nil, ResourceExcludeList{}) // no pods allocation
+			resp := &v1.ListPodResourcesResponse{
+				PodResources: []*v1.PodResources{},
+			}
+			mockPodResClient.On("List", mock.AnythingOfType("*context.timerCtx"), mock.AnythingOfType("*v1.ListPodResourcesRequest")).Return(resp, nil)
+			res, err := resMon.Scan(ResourceExcludeList{}) // no pods allocation
+			So(err, ShouldBeNil)
+
 			sort.Slice(res, func(i, j int) bool {
 				return res[i].Name < res[j].Name
 			})
@@ -210,7 +436,7 @@ func TestResourcesAggregator(t *testing.T) {
 			log.Printf("result=%v", res)
 			log.Printf("expected=%v", expected)
 			log.Printf("diff=%s", cmp.Diff(res, expected))
-			So(cmp.Equal(res, expected), ShouldBeFalse)
+			So(cmp.Equal(res, expected), ShouldBeTrue)
 		})
 	})
 
@@ -279,24 +505,33 @@ func TestResourcesAggregator(t *testing.T) {
 			},
 		}
 
-		resAggr = NewResourcesAggregatorFromData(&fakeTopo, availRes)
+		mockPodResClient := new(podres.MockPodResourcesListerClient)
+		mockPodResClient.On("GetAllocatableResources", mock.AnythingOfType("*context.timerCtx"), mock.AnythingOfType("*v1.AllocatableResourcesRequest")).Return(availRes, nil)
+		resMon, err := NewResourceMonitorWithTopology("TEST", &fakeTopo, mockPodResClient, Args{})
+		So(err, ShouldBeNil)
 
 		Convey("When aggregating resources", func() {
-			podRes := []PodResources{
-				PodResources{
-					Name:      "test-pod-0",
-					Namespace: "default",
-					Containers: []ContainerResources{
-						ContainerResources{
-							Name: "test-cnt-0",
-							Resources: []ResourceInfo{
-								ResourceInfo{
-									Name: "cpu",
-									Data: []string{"5", "7"},
-								},
-								ResourceInfo{
-									Name: "fake.io/net",
-									Data: []string{"netBBB"},
+			resp := &v1.ListPodResourcesResponse{
+				PodResources: []*v1.PodResources{
+					&v1.PodResources{
+						Name:      "test-pod-0",
+						Namespace: "default",
+						Containers: []*v1.ContainerResources{
+							&v1.ContainerResources{
+								Name:   "test-cnt-0",
+								CpuIds: []int64{5, 7},
+								Devices: []*v1.ContainerDevices{
+									&v1.ContainerDevices{
+										ResourceName: "fake.io/net",
+										DeviceIds:    []string{"netBBB"},
+										Topology: &v1.TopologyInfo{
+											Nodes: []*v1.NUMANode{
+												&v1.NUMANode{
+													ID: 1,
+												},
+											},
+										},
+									},
 								},
 							},
 						},
@@ -382,7 +617,9 @@ func TestResourcesAggregator(t *testing.T) {
 				},
 			}
 
-			res := resAggr.Aggregate(podRes, excludeList)
+			mockPodResClient.On("List", mock.AnythingOfType("*context.timerCtx"), mock.AnythingOfType("*v1.ListPodResourcesRequest")).Return(resp, nil)
+			res, err := resMon.Scan(excludeList)
+			So(err, ShouldBeNil)
 			// Check if resources were excluded correctly
 			for _, zone := range res {
 				for _, resource := range zone.Resources {
@@ -419,6 +656,35 @@ func TestResourcesAggregator(t *testing.T) {
 		})
 	})
 
+}
+
+func getExpectedCoreToNodeMap() map[int]int {
+	return map[int]int{
+		0:  0,
+		2:  0,
+		4:  0,
+		6:  0,
+		8:  0,
+		10: 0,
+		12: 0,
+		14: 0,
+		16: 0,
+		18: 0,
+		20: 0,
+		22: 0,
+		1:  1,
+		3:  1,
+		5:  1,
+		7:  1,
+		9:  1,
+		11: 1,
+		13: 1,
+		15: 1,
+		17: 1,
+		19: 1,
+		21: 1,
+		23: 1,
+	}
 }
 
 // ghwc topology -f json
