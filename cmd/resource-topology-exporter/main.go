@@ -55,6 +55,7 @@ const helpTemplate string = `{{.ProgramName}}
 			[--topology-manager-policy=<pol>]
 			[--reference-container=<spec>]
 			[--exclude-list-config=<path>]
+			[--refresh-allocatable]
 
   {{.ProgramName}} -h | --help
   {{.ProgramName}} --version
@@ -82,9 +83,10 @@ const helpTemplate string = `{{.ProgramName}}
                                   See: https://github.com/kubernetes/kubernetes/issues/102190
                                   format of spec is namespace/podname/containername.
                                   Alternatively, you can use the env vars
-				                  REFERENCE_NAMESPACE, REFERENCE_POD_NAME, REFERENCE_CONTAINER_NAME.
+		                  REFERENCE_NAMESPACE, REFERENCE_POD_NAME, REFERENCE_CONTAINER_NAME.
   --exclude-list-config=<path>    Exclude resources list file path.
-                                  [Default:/etc/resource-topology-exporter-config/exclude-list-config.yaml]`
+                                  [Default: /etc/resource-topology-exporter-config/exclude-list-config.yaml]
+  --refresh-allocatable           Refresh allocatable resources before each poll.`
 
 func getUsage() (string, error) {
 	var helpBuffer bytes.Buffer
@@ -150,6 +152,7 @@ func argsParse(argv []string) (nrtupdater.Args, resourcemonitor.Args, resourceto
 			log.Fatalf("error getting exclude list from the configutarion: %v", err)
 		}
 	}
+	resourcemonitorArgs.RefreshAllocatable = arguments["--refresh-allocatable"].(bool)
 
 	rteArgs.Debug = arguments["--debug"].(bool)
 	if refCnt, ok := arguments["--reference-container"].(string); ok {

@@ -656,6 +656,222 @@ func TestResourcesScan(t *testing.T) {
 		})
 	})
 
+	Convey("When I aggregate the node resources fake data and some pod allocation, with refresh allocation", t, func() {
+		mockPodResClient := new(podres.MockPodResourcesListerClient)
+		resMon, err := NewResourceMonitorWithTopology("TEST", &fakeTopo, mockPodResClient, Args{RefreshAllocatable: true})
+		So(err, ShouldBeNil)
+
+		Convey("When aggregating resources", func() {
+			availRes := &v1.AllocatableResourcesResponse{
+				Devices: []*v1.ContainerDevices{
+					&v1.ContainerDevices{
+						ResourceName: "fake.io/net",
+						DeviceIds:    []string{"netAAA"},
+						Topology: &v1.TopologyInfo{
+							Nodes: []*v1.NUMANode{
+								&v1.NUMANode{
+									ID: 0,
+								},
+							},
+						},
+					},
+					&v1.ContainerDevices{
+						ResourceName: "fake.io/resourceToBeExcluded",
+						DeviceIds:    []string{"excludeMeA"},
+						Topology: &v1.TopologyInfo{
+							Nodes: []*v1.NUMANode{
+								&v1.NUMANode{
+									ID: 0,
+								},
+							},
+						},
+					},
+					&v1.ContainerDevices{
+						ResourceName: "fake.io/net",
+						DeviceIds:    []string{"netBBB"},
+						Topology: &v1.TopologyInfo{
+							Nodes: []*v1.NUMANode{
+								&v1.NUMANode{
+									ID: 1,
+								},
+							},
+						},
+					},
+					&v1.ContainerDevices{
+						ResourceName: "fake.io/gpu",
+						DeviceIds:    []string{"gpuAAA"},
+						Topology: &v1.TopologyInfo{
+							Nodes: []*v1.NUMANode{
+								&v1.NUMANode{
+									ID: 1,
+								},
+							},
+						},
+					},
+					&v1.ContainerDevices{
+						ResourceName: "fake.io/resourceToBeExcluded",
+						DeviceIds:    []string{"excludeMeB"},
+						Topology: &v1.TopologyInfo{
+							Nodes: []*v1.NUMANode{
+								&v1.NUMANode{
+									ID: 1,
+								},
+							},
+						},
+					},
+				},
+				CpuIds: []int64{
+					0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+					12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+				},
+			}
+
+			resp := &v1.ListPodResourcesResponse{
+				PodResources: []*v1.PodResources{
+					&v1.PodResources{
+						Name:      "test-pod-0",
+						Namespace: "default",
+						Containers: []*v1.ContainerResources{
+							&v1.ContainerResources{
+								Name:   "test-cnt-0",
+								CpuIds: []int64{5, 7},
+								Devices: []*v1.ContainerDevices{
+									&v1.ContainerDevices{
+										ResourceName: "fake.io/net",
+										DeviceIds:    []string{"netBBB"},
+										Topology: &v1.TopologyInfo{
+											Nodes: []*v1.NUMANode{
+												&v1.NUMANode{
+													ID: 1,
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+
+			expected := topologyv1alpha1.ZoneList{
+				topologyv1alpha1.Zone{
+					Name: "node-0",
+					Type: "Node",
+					Costs: topologyv1alpha1.CostList{
+						topologyv1alpha1.CostInfo{
+							Name:  "node-0",
+							Value: 10,
+						},
+						topologyv1alpha1.CostInfo{
+							Name:  "node-1",
+							Value: 20,
+						},
+					},
+					Resources: topologyv1alpha1.ResourceInfoList{
+						topologyv1alpha1.ResourceInfo{
+							Name:        "cpu",
+							Allocatable: intstr.FromString("12"),
+							Capacity:    intstr.FromString("12"),
+						},
+						topologyv1alpha1.ResourceInfo{
+							Name:        "fake.io/net",
+							Allocatable: intstr.FromString("1"),
+							Capacity:    intstr.FromString("1"),
+						},
+						topologyv1alpha1.ResourceInfo{
+							Name:        "fake.io/resourceToBeExcluded",
+							Allocatable: intstr.FromString("1"),
+							Capacity:    intstr.FromString("1"),
+						},
+					},
+				},
+				topologyv1alpha1.Zone{
+					Name: "node-1",
+					Type: "Node",
+					Costs: topologyv1alpha1.CostList{
+						topologyv1alpha1.CostInfo{
+							Name:  "node-0",
+							Value: 20,
+						},
+						topologyv1alpha1.CostInfo{
+							Name:  "node-1",
+							Value: 10,
+						},
+					},
+					Resources: topologyv1alpha1.ResourceInfoList{
+						topologyv1alpha1.ResourceInfo{
+							Name:        "cpu",
+							Allocatable: intstr.FromString("10"),
+							Capacity:    intstr.FromString("12"),
+						},
+						topologyv1alpha1.ResourceInfo{
+							Name:        "fake.io/gpu",
+							Allocatable: intstr.FromString("1"),
+							Capacity:    intstr.FromString("1"),
+						},
+						topologyv1alpha1.ResourceInfo{
+							Name:        "fake.io/net",
+							Allocatable: intstr.FromString("0"),
+							Capacity:    intstr.FromString("1"),
+						},
+						topologyv1alpha1.ResourceInfo{
+							Name:        "fake.io/resourceToBeExcluded",
+							Allocatable: intstr.FromString("1"),
+							Capacity:    intstr.FromString("1"),
+						},
+					},
+				},
+			}
+
+			excludeList := ResourceExcludeList{
+				map[string][]string{
+					"*": {
+						"fake.io/resourceToBeExcluded",
+					},
+				},
+			}
+
+			mockPodResClient.On("GetAllocatableResources", mock.AnythingOfType("*context.timerCtx"), mock.AnythingOfType("*v1.AllocatableResourcesRequest")).Return(availRes, nil)
+			mockPodResClient.On("List", mock.AnythingOfType("*context.timerCtx"), mock.AnythingOfType("*v1.ListPodResourcesRequest")).Return(resp, nil)
+			res, err := resMon.Scan(excludeList)
+			So(err, ShouldBeNil)
+			// Check if resources were excluded correctly
+			for _, zone := range res {
+				for _, resource := range zone.Resources {
+					assert.NotEqual(t, resource.Name, "fake.io/resourceToBeExcluded", "fake.io/resourceToBeExcluded has to be excluded")
+				}
+			}
+
+			// Add devices after they have been removed by the exclude list
+			for i := range res {
+				res[i].Resources = append(res[i].Resources, topologyv1alpha1.ResourceInfo{
+					Name:        "fake.io/resourceToBeExcluded",
+					Allocatable: intstr.FromString("1"),
+					Capacity:    intstr.FromString("1"),
+				})
+			}
+
+			sort.Slice(res, func(i, j int) bool {
+				return res[i].Name < res[j].Name
+			})
+			for _, resource := range res {
+				sort.Slice(resource.Costs, func(x, y int) bool {
+					return resource.Costs[x].Name < resource.Costs[y].Name
+				})
+			}
+			for _, resource := range res {
+				sort.Slice(resource.Resources, func(x, y int) bool {
+					return resource.Resources[x].Name < resource.Resources[y].Name
+				})
+			}
+			log.Printf("result=%v", res)
+			log.Printf("expected=%v", expected)
+			log.Printf("diff=%s", cmp.Diff(res, expected))
+			So(cmp.Equal(res, expected), ShouldBeTrue)
+		})
+	})
+
 }
 
 func getExpectedCoreToNodeMap() map[int]int {

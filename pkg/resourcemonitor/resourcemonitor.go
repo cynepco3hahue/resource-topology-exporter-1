@@ -98,9 +98,12 @@ func NewResourceMonitorWithTopology(nodeName string, topo *ghw.TopologyInfo, pod
 		coreIDToNodeIDMap: MakeCoreIDToNodeIDMap(topo),
 	}
 	if !rm.args.RefreshAllocatable {
+		log.Printf("getting allocatable resources once")
 		if err := rm.updateNodeCapacity(); err != nil {
 			return nil, err
 		}
+	} else {
+		log.Printf("getting allocatable resources before each poll")
 	}
 
 	if rm.args.Namespace != "" {
