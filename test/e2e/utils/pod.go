@@ -17,6 +17,8 @@ limitations under the License.
 package utils
 
 import (
+    "context"
+	"regexp"
 	"sync"
 
 	"github.com/onsi/ginkgo"
@@ -24,7 +26,8 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/kubernetes/test/e2e/framework"
+    clientset "k8s.io/client-go/kubernetes"
+    "k8s.io/kubernetes/test/e2e/framework"
 )
 
 const (
@@ -97,4 +100,24 @@ func DeletePodSyncByName(f *framework.Framework, podName string) {
 		GracePeriodSeconds: &gp,
 	}
 	f.PodClient().DeleteSync(podName, delOpts, framework.DefaultPodDeletionTimeout)
+}
+
+func GetByRegex(cs clientset.Interface, ns string, reg string) ([]*v1.Pod, error) {
+    podNameRgx, err := regexp.Compile(reg)
+    if err != nil {
+        return nil, err
+    }
+
+    podList, err := cs.CoreV1().Pods(ns).List(context.TODO(), metav1.ListOptions{})
+    if err != nil {
+        return nil, err
+    }
+
+    ret := []*v1.Pod{}
+    for _, pod := range podList.Items {
+        if match := podNameRgx.FindString(pod.Name); len(match) != 0 {
+            ret = append(ret, &pod)
+        }
+    }
+    return ret, nil
 }
