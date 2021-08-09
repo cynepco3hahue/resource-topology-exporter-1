@@ -4,13 +4,15 @@ go 1.16
 
 require (
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
+	github.com/evanphx/json-patch v4.11.0+incompatible // indirect
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/ghodss/yaml v1.0.0
 	github.com/google/go-cmp v0.5.2
 	github.com/jaypipes/ghw v0.8.1-0.20210609141030-acb1a36eaf89
 	github.com/k8stopologyawareschedwg/noderesourcetopology-api v0.0.8
-	github.com/onsi/ginkgo v1.11.0
-	github.com/onsi/gomega v1.7.0
+	github.com/onsi/ginkgo v1.12.1
+	github.com/onsi/gomega v1.7.1
+	github.com/prometheus/client_golang v1.7.1
 	github.com/smartystreets/assertions v1.2.0 // indirect
 	github.com/smartystreets/goconvey v1.6.4
 	github.com/stretchr/testify v1.6.1
@@ -22,6 +24,7 @@ require (
 	k8s.io/client-go v0.21.0
 	k8s.io/kubelet v0.21.0
 	k8s.io/kubernetes v1.21.0
+	k8s.io/utils v0.0.0-20210722164352-7f3ee0f31471 // indirect
 	sigs.k8s.io/yaml v1.2.0
 )
 
@@ -29,6 +32,9 @@ require (
 // need to override with commits (corresponding their kubernetes-* tags)
 replace (
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
+	github.com/googleapis/gnostic => github.com/googleapis/gnostic v0.4.1
+	github.com/onsi/ginkgo => github.com/onsi/ginkgo v1.12.1
+	github.com/onsi/gomega => github.com/onsi/gomega v1.10.5
 	golang.org/x/text => golang.org/x/text v0.3.5
 	google.golang.org/grpc => google.golang.org/grpc v1.27.1
 	k8s.io/api => k8s.io/api v0.21.0
