@@ -17,6 +17,8 @@ limitations under the License.
 package resourcemonitor
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -30,8 +32,21 @@ type Args struct {
 	Namespace             string
 	SysfsRoot             string
 	KubeletConfigFile     string
-	KubeletStateDirs      []string
+	KubeletStateDirs      KubeletStateDirs
 	ExcludeList           ResourceExcludeList
+}
+
+type KubeletStateDirs []string
+
+func (ksd *KubeletStateDirs) String() string {
+	return fmt.Sprint(*ksd)
+}
+
+func (ksd *KubeletStateDirs) Set(value string) error {
+	for _, s := range strings.Split(value, " ") {
+		*ksd = append(*ksd, s)
+	}
+	return nil
 }
 
 type ResourceInfo struct {

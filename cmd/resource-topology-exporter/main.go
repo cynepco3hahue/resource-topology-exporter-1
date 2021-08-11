@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/docopt/docopt-go"
+
 	"sigs.k8s.io/yaml"
 
 	"github.com/k8stopologyawareschedwg/resource-topology-exporter/pkg/nrtupdater"
@@ -24,7 +26,7 @@ const (
 )
 
 func main() {
-	nrtupdaterArgs, resourcemonitorArgs, rteArgs, err := argsParse(os.Args[1:])
+	nrtupdaterArgs, resourcemonitorArgs, rteArgs, err := parseArgs()(os.Args[1:])
 	if err != nil {
 		log.Fatalf("failed to parse command line: %v", err)
 	}
@@ -73,7 +75,7 @@ const helpTemplate string = `{{.ProgramName}}
   --watch-namespace=<namespace>   Namespace to watch pods for. Use "" for all namespaces.
   --sysfs=<path>                  Top-level component path of sysfs. [Default: /sys]
   --kubelet-config-file=<path>    Kubelet config file path. [Default: ]
-  --topology-manager-policy=<pol> Explicitely set the topology manager policy instead of reading
+  --topology-manager-policy=<pol> Explicitly set the topology manager policy instead of reading
                                   from the kubelet. [Default: ]
   --kubelet-state-dir=<path>...   Kubelet state directory (RO access needed), for smart polling.
   --podresources-socket=<path>    Pod Resource Socket path to use.
@@ -206,4 +208,56 @@ func readConfig(configPath string) (config, error) {
 	}
 	err = yaml.Unmarshal(data, &conf)
 	return conf, err
+}
+
+func parseArgs() (nrtupdater.Args, resourcemonitor.Args, resourcetopologyexporter.Args) {
+	var configPath string
+	nrtupdaterArgs := nrtupdater.Args{}
+	resourcemonitorArgs := resourcemonitor.Args{}
+	rteArgs := resourcetopologyexporter.Args{}
+
+	flag.BoolVar(&nrtupdaterArgs.NoPublish, "no-publish", false, "Do not publish discovered features to the cluster-local Kubernetes API server.")
+	flag.BoolVar(&nrtupdaterArgs.Oneshot, "oneshot", false, "Update once and exit.")
+	flag.StringVar(&nrtupdaterArgs.Namespace, "export-namespace", "", "Namespace on which update CRDs. Use \"\" for all namespaces")
+	flag.StringVar(&nrtupdaterArgs.Hostname, "hostname", defaultHostName(), "Override the node hostname.")
+
+	flag.DurationVar(&resourcemonitorArgs.SleepInterval, "sleep-interval", 60*time.Second, "Time to sleep between podresources API polls.")
+	flag.StringVar(&resourcemonitorArgs.Namespace, "watch-namespace", "", "Namespace to watch pods for. Use \"\" for all namespaces.")
+	flag.StringVar(&resourcemonitorArgs.KubeletConfigFile, "kubelet-config-file", "/podresources/config.yaml", "Kubelet config file path.")
+	flag.StringVar(&resourcemonitorArgs.SysfsRoot, "sysfs", "/sys", "Top-level component path of sysfs.")
+	flag.StringVar(&resourcemonitorArgs.PodResourceSocketPath, "podresources-socket", "unix:///podresources/kubelet.sock", "Pod Resource Socket path to use.")
+	flag.Var(&resourcemonitorArgs.KubeletStateDirs, "kubelet-state-dir", "Kubelet state directory (RO access needed), for smart polling.")
+
+	flag.StringVar(&configPath,"config", "/etc/resource-topology-exporter/config.yaml", "Configuration file path. Use this to set the exclude list.")
+	conf, err := readConfig(configPath)
+	if err != nil {
+		log.Fatalf("error getting exclude list from the configuration: %v", err)
+	}
+	resourcemonitorArgs.ExcludeList.ExcludeList = conf.ExcludeList
+	log.Printf("using exclude list:\n%s", resourcemonitorArgs.ExcludeList.String())
+
+	flag.BoolVar(&rteArgs.Debug, "debug", false, " Enable debug output.")
+	flag.StringVar(&rteArgs.RefContainer, "reference-container", "", "Reference container, used to learn about the shared cpu pool\n See: https://github.com/kubernetes/kubernetes/issues/102190\n format of spec is namespace/podname/containername.\n Alternatively, you can use the env vars REFERENCE_NAMESPACE, REFERENCE_POD_NAME, REFERENCE_CONTAINER_NAME.")
+	flag.StringVar(&rteArgs.TopologyManagerPolicy, "topology-manager-policy", defaultTmPolicy(), "Explicitly set the topology manager policy instead of reading from the kubelet.")
+}
+
+func defaultHostName() string {
+	var err error
+
+	val, ok := os.LookupEnv("NODE_NAME")
+	if !ok || val == "" {
+		val, err = os.Hostname()
+		if err != nil {
+			log.Fatalf("error getting the host name: %v", err)
+		}
+	}
+	return val
+}
+
+func defaultTmPolicy() string {
+	if val, ok := os.LookupEnv("TOPOLOGY_MANAGER_POLICY"); ok {
+		return val
+	}
+	// empty string is a valid value here, so just keep going
+	return ""
 }

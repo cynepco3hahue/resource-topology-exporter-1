@@ -26,6 +26,7 @@ const (
 
 type Args struct {
 	Debug                 bool
+	RefContainer          string
 	ReferenceContainer    *podrescli.ContainerIdent
 	TopologyManagerPolicy string
 }
